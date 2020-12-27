@@ -1,225 +1,212 @@
 package main
 
 import (
-	"errors"
+	"bufio"
 	"fmt"
+	"log"
+	"os"
 	"strings"
+
+	"github.com/jamesroutley/mal/impls/go/src/builtin"
+	"github.com/jamesroutley/mal/impls/go/src/environment"
+	"github.com/jamesroutley/mal/impls/go/src/printer"
+	"github.com/jamesroutley/mal/impls/go/src/reader"
+	"github.com/jamesroutley/mal/impls/go/src/types"
 )
-
-import (
-	"core"
-	. "env"
-	"printer"
-	"reader"
-	"readline"
-	. "types"
-)
-
-// read
-func READ(str string) (MalType, error) {
-	return reader.Read_str(str)
-}
-
-// eval
-func eval_ast(ast MalType, env EnvType) (MalType, error) {
-	//fmt.Printf("eval_ast: %#v\n", ast)
-	if Symbol_Q(ast) {
-		return env.Get(ast.(Symbol))
-	} else if List_Q(ast) {
-		lst := []MalType{}
-		for _, a := range ast.(List).Val {
-			exp, e := EVAL(a, env)
-			if e != nil {
-				return nil, e
-			}
-			lst = append(lst, exp)
-		}
-		return List{lst, nil}, nil
-	} else if Vector_Q(ast) {
-		lst := []MalType{}
-		for _, a := range ast.(Vector).Val {
-			exp, e := EVAL(a, env)
-			if e != nil {
-				return nil, e
-			}
-			lst = append(lst, exp)
-		}
-		return Vector{lst, nil}, nil
-	} else if HashMap_Q(ast) {
-		m := ast.(HashMap)
-		new_hm := HashMap{map[string]MalType{}, nil}
-		for k, v := range m.Val {
-			ke, e1 := EVAL(k, env)
-			if e1 != nil {
-				return nil, e1
-			}
-			if _, ok := ke.(string); !ok {
-				return nil, errors.New("non string hash-map key")
-			}
-			kv, e2 := EVAL(v, env)
-			if e2 != nil {
-				return nil, e2
-			}
-			new_hm.Val[ke.(string)] = kv
-		}
-		return new_hm, nil
-	} else {
-		return ast, nil
-	}
-}
-
-func EVAL(ast MalType, env EnvType) (MalType, error) {
-	//fmt.Printf("EVAL: %v\n", printer.Pr_str(ast, true))
-	switch ast.(type) {
-	case List: // continue
-	default:
-		return eval_ast(ast, env)
-	}
-
-	if len(ast.(List).Val) == 0 {
-		return ast, nil
-	}
-
-	// apply list
-	a0 := ast.(List).Val[0]
-	var a1 MalType = nil
-	var a2 MalType = nil
-	switch len(ast.(List).Val) {
-	case 1:
-		a1 = nil
-		a2 = nil
-	case 2:
-		a1 = ast.(List).Val[1]
-		a2 = nil
-	default:
-		a1 = ast.(List).Val[1]
-		a2 = ast.(List).Val[2]
-	}
-	a0sym := "__<*fn*>__"
-	if Symbol_Q(a0) {
-		a0sym = a0.(Symbol).Val
-	}
-	switch a0sym {
-	case "def!":
-		res, e := EVAL(a2, env)
-		if e != nil {
-			return nil, e
-		}
-		return env.Set(a1.(Symbol), res), nil
-	case "let*":
-		let_env, e := NewEnv(env, nil, nil)
-		if e != nil {
-			return nil, e
-		}
-		arr1, e := GetSlice(a1)
-		if e != nil {
-			return nil, e
-		}
-		for i := 0; i < len(arr1); i += 2 {
-			if !Symbol_Q(arr1[i]) {
-				return nil, errors.New("non-symbol bind value")
-			}
-			exp, e := EVAL(arr1[i+1], let_env)
-			if e != nil {
-				return nil, e
-			}
-			let_env.Set(arr1[i].(Symbol), exp)
-		}
-		return EVAL(a2, let_env)
-	case "do":
-		el, e := eval_ast(List{ast.(List).Val[1:], nil}, env)
-		if e != nil {
-			return nil, e
-		}
-		lst := el.(List).Val
-		if len(lst) == 0 {
-			return nil, nil
-		}
-		return lst[len(lst)-1], nil
-	case "if":
-		cond, e := EVAL(a1, env)
-		if e != nil {
-			return nil, e
-		}
-		if cond == nil || cond == false {
-			if len(ast.(List).Val) >= 4 {
-				return EVAL(ast.(List).Val[3], env)
-			} else {
-				return nil, nil
-			}
-		} else {
-			return EVAL(a2, env)
-		}
-	case "fn*":
-		return func(arguments []MalType) (MalType, error) {
-			new_env, e := NewEnv(env, a1, List{arguments, nil})
-			if e != nil {
-				return nil, e
-			}
-			return EVAL(a2, new_env)
-		}, nil
-	default:
-		el, e := eval_ast(ast, env)
-		if e != nil {
-			return nil, e
-		}
-		f, ok := el.(List).Val[0].(func([]MalType) (MalType, error))
-		if !ok {
-			return nil, errors.New("attempt to call non-function")
-		}
-		return f(el.(List).Val[1:])
-	}
-}
-
-// print
-func PRINT(exp MalType) (string, error) {
-	return printer.Pr_str(exp, true), nil
-}
-
-var repl_env, _ = NewEnv(nil, nil, nil)
-
-// repl
-func rep(str string) (MalType, error) {
-	var exp MalType
-	var res string
-	var e error
-	if exp, e = READ(str); e != nil {
-		return nil, e
-	}
-	if exp, e = EVAL(exp, repl_env); e != nil {
-		return nil, e
-	}
-	if res, e = PRINT(exp); e != nil {
-		return nil, e
-	}
-	return res, nil
-}
 
 func main() {
-	// core.go: defined using go
-	for k, v := range core.NS {
-		repl_env.Set(Symbol{k}, v)
-	}
+	env := environment.NewEnv()
+	env.Set("+", builtin.Add)
+	env.Set("-", builtin.Subtract)
+	env.Set("*", builtin.Multiply)
+	env.Set("/", builtin.Divide)
 
-	// core.mal: defined using the language itself
-	rep("(def! not (fn* (a) (if a false true)))")
+	// code := "(def! (a 1 b (+ a 5)) (+ b 4))"
+	// ast, err := Read(code)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// reader.DebugType(ast)
 
-	// repl loop
 	for {
-		text, err := readline.Readline("user> ")
-		text = strings.TrimRight(text, "\n")
+		fmt.Printf("user> ")
+		reader := bufio.NewReader(os.Stdin)
+		line, err := reader.ReadString('\n')
 		if err != nil {
-			return
+			log.Fatal(err)
 		}
-		var out MalType
-		var e error
-		if out, e = rep(text); e != nil {
-			if e.Error() == "<empty line>" {
-				continue
-			}
-			fmt.Printf("Error: %v\n", e)
-			continue
+		line = strings.TrimSuffix(line, "\n")
+		output, err := Rep(line, env)
+		if err != nil {
+			fmt.Println(err)
 		}
-		fmt.Printf("%v\n", out)
+		fmt.Println(output)
 	}
+}
+
+// Read tokenizes and parses source code
+func Read(s string) (types.MalType, error) {
+	return reader.ReadStr(s)
+}
+
+// Eval evaulates a piece of parsed code.
+// The way code is evaluated depends on its structure.
+//
+// 1. Special forms - these are language-level features, which behave
+// differently to normal functions. These include `def!` and `let*`. For
+// example, certain elements in the argument list might be evaluated
+// differently (or not at all)
+// 2. Symbols: evaluated to their corresponding value in the environment `env`
+// 3. Lists: by default, they're treated as function calls - each item is
+// evaluated, and the first item (the function itself) is called with the rest
+// of the items as arguments.
+func Eval(ast types.MalType, env *environment.Env) (types.MalType, error) {
+	if operator, args, ok := isSpecialForm(ast); ok {
+		return evalSpecialForm(operator, args, env)
+	}
+
+	list, ok := ast.(*types.MalList)
+	if !ok {
+		return evalAST(ast, env)
+	}
+	if len(list.Items) == 0 {
+		return ast, nil
+	}
+
+	evaluated, err := evalAST(list, env)
+	if err != nil {
+		return nil, err
+	}
+
+	evaluatedList, ok := evaluated.(*types.MalList)
+	if !ok {
+		return nil, fmt.Errorf("list did not evaluate to a list")
+	}
+
+	function, ok := evaluatedList.Items[0].(*types.MalFunction)
+	if !ok {
+		return nil, fmt.Errorf("first item in list isn't a function")
+	}
+	return function.Func(evaluatedList.Items[1:]...)
+}
+
+// Print prints the AST as a human readable string. It's not inteded for debugging
+func Print(s types.MalType) string {
+	return printer.PrStr(s)
+}
+
+// Rep - read, evaluate, print
+func Rep(s string, env *environment.Env) (string, error) {
+	t, err := Read(s)
+	if err != nil {
+		return "", err
+	}
+	t, err = Eval(t, env)
+	if err != nil {
+		return "", err
+	}
+	s = Print(t)
+	return s, nil
+}
+
+// evalAST implements the evaluation rules for normal expressions. Any special
+// cases are handed above us, in the Eval function. This function is an
+// implementation detail of Eval, and shoulnd't be called apart from by it.
+func evalAST(ast types.MalType, env *environment.Env) (types.MalType, error) {
+	switch tok := ast.(type) {
+	case *types.MalSymbol:
+		value, err := env.Get(tok.Value)
+		if err != nil {
+			return nil, err
+		}
+		return value, nil
+	case *types.MalList:
+		items := make([]types.MalType, len(tok.Items))
+		for i, item := range tok.Items {
+			evaluated, err := Eval(item, env)
+			if err != nil {
+				return nil, err
+			}
+			items[i] = evaluated
+		}
+		return &types.MalList{
+			Items: items,
+		}, nil
+	}
+	return ast, nil
+}
+
+func isSpecialForm(ast types.MalType) (operator *types.MalSymbol, args []types.MalType, ok bool) {
+	tok, ok := ast.(*types.MalList)
+	if !ok {
+		return nil, nil, false
+	}
+	items := tok.Items
+	if len(items) == 0 {
+		return nil, nil, false
+	}
+
+	operator, ok = items[0].(*types.MalSymbol)
+	if !ok {
+		return nil, nil, false
+	}
+
+	switch operator.Value {
+	case "def!", "let*":
+		return operator, items[1:], true
+	}
+
+	return nil, nil, false
+}
+
+func evalSpecialForm(
+	operator *types.MalSymbol, args []types.MalType, env *environment.Env,
+) (types.MalType, error) {
+	switch operator.Value {
+	case "def!":
+		if len(args) != 2 {
+			return nil, fmt.Errorf("def! takes 2 args")
+		}
+		key, ok := args[0].(*types.MalSymbol)
+		if !ok {
+			return nil, fmt.Errorf("def!: first arg isn't a symbol")
+		}
+		value, err := Eval(args[1], env)
+		if err != nil {
+			return nil, err
+		}
+		env.Set(key.Value, value)
+		return value, nil
+
+	case "let*":
+		if len(args) != 2 {
+			return nil, fmt.Errorf("let* takes 2 args")
+		}
+		bindingList, ok := args[0].(*types.MalList)
+		if !ok {
+			return nil, fmt.Errorf("let*: first arg isn't a list")
+		}
+		if len(bindingList.Items)%2 != 0 {
+			return nil, fmt.Errorf("let*: first arg doesn't have an even number of items")
+		}
+
+		childEnv := env.ChildEnv()
+		for i := 0; i < len(bindingList.Items); i += 2 {
+			key, ok := bindingList.Items[i].(*types.MalSymbol)
+			if !ok {
+				return nil, fmt.Errorf("let*: binding list: arg %d isn't a symbol", i)
+			}
+			value, err := Eval(bindingList.Items[i+1], childEnv)
+			if err != nil {
+				return nil, err
+			}
+			childEnv.Set(key.Value, value)
+		}
+
+		// Finally, evaluate the last arg, in the context of the newly
+		// created environment
+		return Eval(args[1], childEnv)
+	}
+
+	return nil, fmt.Errorf("unexpected special form: %s", operator.Value)
 }

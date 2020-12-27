@@ -1,223 +1,151 @@
 package reader
 
 import (
-	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
-	//"fmt"
+
+	"github.com/jamesroutley/mal/impls/go/src/types"
 )
 
-import (
-	. "types"
-)
-
-type Reader interface {
-	next() *string
-	peek() *string
+type Reader struct {
+	Tokens   []string
+	Position int
 }
 
-type TokenReader struct {
-	tokens   []string
-	position int
+func NewReader(tokens []string) *Reader {
+	return &Reader{
+		Tokens:   tokens,
+		Position: 0,
+	}
 }
 
-func (tr *TokenReader) next() *string {
-	if tr.position >= len(tr.tokens) {
-		return nil
+func (r *Reader) Peek() (string, error) {
+	if r.Position == len(r.Tokens) {
+		return "", fmt.Errorf("EOF")
 	}
-	token := tr.tokens[tr.position]
-	tr.position = tr.position + 1
-	return &token
+	return strings.Trim(r.Tokens[r.Position], " ,\n\t"), nil
 }
 
-func (tr *TokenReader) peek() *string {
-	if tr.position >= len(tr.tokens) {
-		return nil
+func (r *Reader) Next() (string, error) {
+	if r.Position == len(r.Tokens) {
+		return "", fmt.Errorf("EOF")
 	}
-	return &tr.tokens[tr.position]
+	current := strings.Trim(r.Tokens[r.Position], " ,\n\t")
+	r.Position++
+	return current, nil
 }
 
-func tokenize(str string) []string {
-	results := make([]string, 0, 1)
-	// Work around lack of quoting in backtick
-	re := regexp.MustCompile(`[\s,]*(~@|[\[\]{}()'` + "`" +
-		`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"` + "`" +
-		`,;)]*)`)
-	for _, group := range re.FindAllStringSubmatch(str, -1) {
-		if (group[1] == "") || (group[1][0] == ';') {
-			continue
-		}
-		results = append(results, group[1])
-	}
-	return results
+func ReadStr(s string) (types.MalType, error) {
+	tokens := Tokenize(s)
+	reader := NewReader(tokens)
+	return ReadForm(reader)
 }
 
-func read_atom(rdr Reader) (MalType, error) {
-	token := rdr.next()
-	if token == nil {
-		return nil, errors.New("read_atom underflow")
-	}
-	if match, _ := regexp.MatchString(`^-?[0-9]+$`, *token); match {
-		var i int
-		var e error
-		if i, e = strconv.Atoi(*token); e != nil {
-			return nil, errors.New("number parse error")
-		}
-		return i, nil
-	} else if match, _ :=
-		  regexp.MatchString(`^"(?:\\.|[^\\"])*"$`, *token); match {
-		str := (*token)[1 : len(*token)-1]
-		return strings.Replace(
-			strings.Replace(
-			 strings.Replace(
-			  strings.Replace(str, `\\`, "\u029e", -1),
-			  `\"`, `"`, -1),
-			 `\n`, "\n", -1),
-			"\u029e", "\\", -1), nil
-	} else if (*token)[0] == '"' {
-		return nil, errors.New("expected '\"', got EOF")
-	} else if (*token)[0] == ':' {
-		return NewKeyword((*token)[1:len(*token)])
-	} else if *token == "nil" {
-		return nil, nil
-	} else if *token == "true" {
-		return true, nil
-	} else if *token == "false" {
-		return false, nil
-	} else {
-		return Symbol{*token}, nil
-	}
-	return token, nil
+func Tokenize(s string) []string {
+	re := regexp.MustCompile(`[\s,]*(~@|[\[\]{}()'` + "`" + `~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"` + "`" + `,;)]*)`)
+	return re.FindAllString(s, -1)
 }
 
-func read_list(rdr Reader, start string, end string) (MalType, error) {
-	token := rdr.next()
-	if token == nil {
-		return nil, errors.New("read_list underflow")
+func ReadForm(reader *Reader) (types.MalType, error) {
+	token, err := reader.Peek()
+	if err != nil {
+		return nil, err
 	}
-	if *token != start {
-		return nil, errors.New("expected '" + start + "'")
-	}
-
-	ast_list := []MalType{}
-	token = rdr.peek()
-	for ; true; token = rdr.peek() {
-		if token == nil {
-			return nil, errors.New("exepected '" + end + "', got EOF")
-		}
-		if *token == end {
-			break
-		}
-		f, e := read_form(rdr)
-		if e != nil {
-			return nil, e
-		}
-		ast_list = append(ast_list, f)
-	}
-	rdr.next()
-	return List{ast_list, nil}, nil
-}
-
-func read_vector(rdr Reader) (MalType, error) {
-	lst, e := read_list(rdr, "[", "]")
-	if e != nil {
-		return nil, e
-	}
-	vec := Vector{lst.(List).Val, nil}
-	return vec, nil
-}
-
-func read_hash_map(rdr Reader) (MalType, error) {
-	mal_lst, e := read_list(rdr, "{", "}")
-	if e != nil {
-		return nil, e
-	}
-	return NewHashMap(mal_lst)
-}
-
-func read_form(rdr Reader) (MalType, error) {
-	token := rdr.peek()
-	if token == nil {
-		return nil, errors.New("read_form underflow")
-	}
-	switch *token {
-
-	case `'`:
-		rdr.next()
-		form, e := read_form(rdr)
-		if e != nil {
-			return nil, e
-		}
-		return List{[]MalType{Symbol{"quote"}, form}, nil}, nil
-	case "`":
-		rdr.next()
-		form, e := read_form(rdr)
-		if e != nil {
-			return nil, e
-		}
-		return List{[]MalType{Symbol{"quasiquote"}, form}, nil}, nil
-	case `~`:
-		rdr.next()
-		form, e := read_form(rdr)
-		if e != nil {
-			return nil, e
-		}
-		return List{[]MalType{Symbol{"unquote"}, form}, nil}, nil
-	case `~@`:
-		rdr.next()
-		form, e := read_form(rdr)
-		if e != nil {
-			return nil, e
-		}
-		return List{[]MalType{Symbol{"splice-unquote"}, form}, nil}, nil
-	case `^`:
-		rdr.next()
-		meta, e := read_form(rdr)
-		if e != nil {
-			return nil, e
-		}
-		form, e := read_form(rdr)
-		if e != nil {
-			return nil, e
-		}
-		return List{[]MalType{Symbol{"with-meta"}, form, meta}, nil}, nil
-	case `@`:
-		rdr.next()
-		form, e := read_form(rdr)
-		if e != nil {
-			return nil, e
-		}
-		return List{[]MalType{Symbol{"deref"}, form}, nil}, nil
-
-	// list
-	case ")":
-		return nil, errors.New("unexpected ')'")
+	switch token {
 	case "(":
-		return read_list(rdr, "(", ")")
-
-	// vector
-	case "]":
-		return nil, errors.New("unexpected ']'")
-	case "[":
-		return read_vector(rdr)
-
-	// hash-map
-	case "}":
-		return nil, errors.New("unexpected '}'")
-	case "{":
-		return read_hash_map(rdr)
+		// Increment the position pointer
+		_, err = reader.Next()
+		if err != nil {
+			return nil, err
+		}
+		return ReadList(reader)
 	default:
-		return read_atom(rdr)
+		return ReadAtom(reader)
 	}
-	return read_atom(rdr)
 }
 
-func Read_str(str string) (MalType, error) {
-	var tokens = tokenize(str)
-	if len(tokens) == 0 {
-		return nil, errors.New("<empty line>")
+func ReadList(reader *Reader) (types.MalType, error) {
+	var items []types.MalType
+	for {
+		// TODO: error case when we hit file without closing bracket
+		tok, err := reader.Peek()
+		if err != nil {
+			return nil, err
+		}
+		if tok == ")" {
+			// Increment the position pointer
+			_, err := reader.Next()
+			if err != nil {
+				return nil, err
+			}
+			return &types.MalList{
+				Items: items,
+			}, nil
+		}
+		item, err := ReadForm(reader)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+}
+
+func ReadAtom(reader *Reader) (types.MalType, error) {
+	token, err := reader.Next()
+	if err != nil {
+		return nil, err
 	}
 
-	return read_form(&TokenReader{tokens: tokens, position: 0})
+	if num, err := strconv.Atoi(token); err == nil {
+		return &types.MalInt{
+			Value: num,
+		}, nil
+	}
+
+	if token == "true" {
+		return &types.MalBoolean{Value: true}, nil
+	}
+	if token == "false" {
+		return &types.MalBoolean{Value: false}, nil
+	}
+
+	if token == "nil" {
+		return &types.MalNil{}, nil
+	}
+
+	return &types.MalSymbol{
+		Value: token,
+	}, nil
+}
+
+func DebugType(m types.MalType) {
+	fmt.Println(debugType(m, 0))
+}
+
+func debugType(m types.MalType, indent int) string {
+	switch tok := m.(type) {
+	case *types.MalList:
+		itemStrings := make([]string, len(tok.Items))
+		for i, item := range tok.Items {
+			itemStrings[i] = debugType(item, 0)
+		}
+		return fmt.Sprintf("(%s)", strings.Join(itemStrings, " "))
+	case *types.MalInt:
+		return fmt.Sprintf("int:%d ", tok.Value)
+	case *types.MalSymbol:
+		return fmt.Sprintf("symbol:`%s` ", tok.Value)
+	case *types.MalFunction:
+		return fmt.Sprintf("function")
+	default:
+		panic("debug print not implemented for this type")
+	}
+}
+
+func DebugTokens(s string) {
+	tokens := Tokenize(s)
+	for _, tok := range tokens {
+		fmt.Printf("`%s`\n", tok)
+	}
 }

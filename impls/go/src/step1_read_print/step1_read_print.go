@@ -1,66 +1,52 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"log"
+	"os"
 	"strings"
+
+	"github.com/jamesroutley/mal/impls/go/src/printer"
+	"github.com/jamesroutley/mal/impls/go/src/reader"
+	"github.com/jamesroutley/mal/impls/go/src/types"
 )
-
-import (
-	"printer"
-	"reader"
-	"readline"
-	. "types"
-)
-
-// read
-func READ(str string) (MalType, error) {
-	return reader.Read_str(str)
-}
-
-// eval
-func EVAL(ast MalType, env string) (MalType, error) {
-	return ast, nil
-}
-
-// print
-func PRINT(exp MalType) (string, error) {
-	return printer.Pr_str(exp, true), nil
-}
-
-// repl
-func rep(str string) (MalType, error) {
-	var exp MalType
-	var res string
-	var e error
-	if exp, e = READ(str); e != nil {
-		return nil, e
-	}
-	if exp, e = EVAL(exp, ""); e != nil {
-		return nil, e
-	}
-	if res, e = PRINT(exp); e != nil {
-		return nil, e
-	}
-	return res, nil
-}
 
 func main() {
-	// repl loop
 	for {
-		text, err := readline.Readline("user> ")
-		text = strings.TrimRight(text, "\n")
+		fmt.Printf("user> ")
+		reader := bufio.NewReader(os.Stdin)
+		line, err := reader.ReadString('\n')
 		if err != nil {
-			return
+			log.Fatal(err)
 		}
-		var out MalType
-		var e error
-		if out, e = rep(text); e != nil {
-			if e.Error() == "<empty line>" {
-				continue
-			}
-			fmt.Printf("Error: %v\n", e)
-			continue
+		line = strings.TrimSuffix(line, "\n")
+		output, err := (Rep(line))
+		if err != nil {
+			fmt.Println(err)
 		}
-		fmt.Printf("%v\n", out)
+		fmt.Println(output)
 	}
+}
+
+func Read(s string) (types.MalType, error) {
+	return reader.ReadStr(s)
+}
+
+func Eval(s types.MalType) types.MalType {
+	return s
+}
+
+func Print(s types.MalType) string {
+	return printer.PrStr(s)
+}
+
+func Rep(s string) (string, error) {
+	t, err := Read(s)
+	if err != nil {
+		return "", err
+	}
+	t = Eval(t)
+	s = Print(t)
+	return s, nil
 }

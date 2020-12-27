@@ -1,2 +1,0 @@
-| This Obey file sets up the environment for running mal on RISC OS.
-BASIC { < tokenize }

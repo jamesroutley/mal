@@ -1,173 +1,119 @@
 package main
 
 import (
-	"errors"
+	"bufio"
 	"fmt"
+	"log"
+	"os"
 	"strings"
+
+	"github.com/jamesroutley/mal/impls/go/src/builtin"
+	"github.com/jamesroutley/mal/impls/go/src/printer"
+	"github.com/jamesroutley/mal/impls/go/src/reader"
+	"github.com/jamesroutley/mal/impls/go/src/types"
 )
-
-import (
-	"printer"
-	"reader"
-	"readline"
-	. "types"
-)
-
-// read
-func READ(str string) (MalType, error) {
-	return reader.Read_str(str)
-}
-
-// eval
-func eval_ast(ast MalType, env map[string]MalType) (MalType, error) {
-	//fmt.Printf("eval_ast: %#v\n", ast)
-	if Symbol_Q(ast) {
-		k := ast.(Symbol).Val
-		exp, ok := env[k]
-		if !ok {
-			return nil, errors.New("'" + k + "' not found")
-		}
-		return exp, nil
-	} else if List_Q(ast) {
-		lst := []MalType{}
-		for _, a := range ast.(List).Val {
-			exp, e := EVAL(a, env)
-			if e != nil {
-				return nil, e
-			}
-			lst = append(lst, exp)
-		}
-		return List{lst, nil}, nil
-	} else if Vector_Q(ast) {
-		lst := []MalType{}
-		for _, a := range ast.(Vector).Val {
-			exp, e := EVAL(a, env)
-			if e != nil {
-				return nil, e
-			}
-			lst = append(lst, exp)
-		}
-		return Vector{lst, nil}, nil
-	} else if HashMap_Q(ast) {
-		m := ast.(HashMap)
-		new_hm := HashMap{map[string]MalType{}, nil}
-		for k, v := range m.Val {
-			ke, e1 := EVAL(k, env)
-			if e1 != nil {
-				return nil, e1
-			}
-			if _, ok := ke.(string); !ok {
-				return nil, errors.New("non string hash-map key")
-			}
-			kv, e2 := EVAL(v, env)
-			if e2 != nil {
-				return nil, e2
-			}
-			new_hm.Val[ke.(string)] = kv
-		}
-		return new_hm, nil
-	} else {
-		return ast, nil
-	}
-}
-
-func EVAL(ast MalType, env map[string]MalType) (MalType, error) {
-	//fmt.Printf("EVAL: %v\n", printer.Pr_str(ast, true))
-	switch ast.(type) {
-	case List: // continue
-	default:
-		return eval_ast(ast, env)
-	}
-
-	if len(ast.(List).Val) == 0 {
-		return ast, nil
-	}
-
-	// apply list
-	el, e := eval_ast(ast, env)
-	if e != nil {
-		return nil, e
-	}
-	f, ok := el.(List).Val[0].(func([]MalType) (MalType, error))
-	if !ok {
-		return nil, errors.New("attempt to call non-function")
-	}
-	return f(el.(List).Val[1:])
-}
-
-// print
-func PRINT(exp MalType) (string, error) {
-	return printer.Pr_str(exp, true), nil
-}
-
-var repl_env = map[string]MalType{
-	"+": func(a []MalType) (MalType, error) {
-		if e := assertArgNum(a, 2); e != nil {
-			return nil, e
-		}
-		return a[0].(int) + a[1].(int), nil
-	},
-	"-": func(a []MalType) (MalType, error) {
-		if e := assertArgNum(a, 2); e != nil {
-			return nil, e
-		}
-		return a[0].(int) - a[1].(int), nil
-	},
-	"*": func(a []MalType) (MalType, error) {
-		if e := assertArgNum(a, 2); e != nil {
-			return nil, e
-		}
-		return a[0].(int) * a[1].(int), nil
-	},
-	"/": func(a []MalType) (MalType, error) {
-		if e := assertArgNum(a, 2); e != nil {
-			return nil, e
-		}
-		return a[0].(int) / a[1].(int), nil
-	},
-}
-
-func assertArgNum(a []MalType, n int) error {
-	if len(a) != n {
-		return errors.New("wrong number of arguments")
-	}
-	return nil
-}
-
-// repl
-func rep(str string) (MalType, error) {
-	var exp MalType
-	var res string
-	var e error
-	if exp, e = READ(str); e != nil {
-		return nil, e
-	}
-	if exp, e = EVAL(exp, repl_env); e != nil {
-		return nil, e
-	}
-	if res, e = PRINT(exp); e != nil {
-		return nil, e
-	}
-	return res, nil
-}
 
 func main() {
-	// repl loop
-	for {
-		text, err := readline.Readline("user> ")
-		text = strings.TrimRight(text, "\n")
-		if err != nil {
-			return
-		}
-		var out MalType
-		var e error
-		if out, e = rep(text); e != nil {
-			if e.Error() == "<empty line>" {
-				continue
-			}
-			fmt.Printf("Error: %v\n", e)
-			continue
-		}
-		fmt.Printf("%v\n", out)
+	env := types.Environment{
+		"+": builtin.Add,
+		"-": builtin.Subtract,
+		"*": builtin.Multiply,
+		"/": builtin.Divide,
 	}
+
+	// fmt.Println(env)
+
+	// fmt.Println(Rep("(+ 1 100)", env))
+	// return
+
+	for {
+		fmt.Printf("user> ")
+		reader := bufio.NewReader(os.Stdin)
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			log.Fatal(err)
+		}
+		line = strings.TrimSuffix(line, "\n")
+		output, err := Rep(line, env)
+		if err != nil {
+			fmt.Println(err)
+		}
+		fmt.Println(output)
+	}
+}
+
+func Read(s string) (types.MalType, error) {
+	return reader.ReadStr(s)
+}
+
+func Eval(ast types.MalType, env types.Environment) (types.MalType, error) {
+	switch tok := ast.(type) {
+	case *types.MalList:
+		if len(tok.Items) == 0 {
+			return ast, nil
+		}
+
+		reader.DebugType(tok)
+
+		evaluated, err := evalAST(tok, env)
+		if err != nil {
+			return nil, err
+		}
+
+		evaluatedList, ok := evaluated.(*types.MalList)
+		if !ok {
+			return nil, fmt.Errorf("List did not evaluate to a list")
+		}
+
+		reader.DebugType(evaluatedList)
+
+		function, ok := evaluatedList.Items[0].(*types.MalFunction)
+		if !ok {
+			return nil, fmt.Errorf("First item in list isn't a function")
+		}
+
+		return function.Func(evaluatedList.Items[1:len(evaluatedList.Items)]...)
+	}
+	return evalAST(ast, env)
+}
+
+func Print(s types.MalType) string {
+	return printer.PrStr(s)
+}
+
+func Rep(s string, env types.Environment) (string, error) {
+	t, err := Read(s)
+	if err != nil {
+		return "", err
+	}
+	t, err = Eval(t, env)
+	if err != nil {
+		return "", err
+	}
+	s = Print(t)
+	return s, nil
+}
+
+func evalAST(ast types.MalType, env types.Environment) (types.MalType, error) {
+	switch tok := ast.(type) {
+	case *types.MalSymbol:
+		value, ok := env[tok.Value]
+		if !ok {
+			return nil, fmt.Errorf("Symbol %s not found", tok.Value)
+		}
+		return value, nil
+	case *types.MalList:
+		items := make([]types.MalType, len(tok.Items))
+		for i, item := range tok.Items {
+			evaluated, err := Eval(item, env)
+			if err != nil {
+				return nil, err
+			}
+			items[i] = evaluated
+		}
+		return &types.MalList{
+			Items: items,
+		}, nil
+	}
+	return ast, nil
 }
