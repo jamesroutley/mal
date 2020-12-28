@@ -38,3 +38,4 @@ all:
 	go build src/step2_eval/*.go
 	go build src/step3_env/*.go
 	go build src/step4_if_fn_do/*.go
+	go build src/step5_tco/step5_tco.go

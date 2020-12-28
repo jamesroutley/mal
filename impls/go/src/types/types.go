@@ -10,6 +10,12 @@ type MalType interface {
 	String() string
 }
 
+type EnvType interface {
+	Set(string, MalType)
+	Get(string) (MalType, error)
+	Find(string) (EnvType, error)
+}
+
 type MalList struct {
 	Items []MalType
 }
@@ -39,7 +45,11 @@ func (s *MalSymbol) String() string {
 }
 
 type MalFunction struct {
-	Func func(args ...MalType) (MalType, error)
+	Func              func(args ...MalType) (MalType, error)
+	TailCallOptimised bool
+	AST               MalType
+	Params            []*MalSymbol
+	Env               EnvType
 }
 
 func (f *MalFunction) String() string {
