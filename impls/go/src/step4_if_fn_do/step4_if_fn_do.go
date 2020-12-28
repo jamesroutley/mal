@@ -20,6 +20,12 @@ func main() {
 		env.Set(item.Symbol.Value, item.Func)
 	}
 
+	// Builtin functions defined in lisp
+	_, err := Rep("(def! not (fn* (a) (if a false true)))", env)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// code := "((fn* (a) a) true)"
 	// ast, err := Read(code)
 	// if err != nil {
