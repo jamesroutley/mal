@@ -2,6 +2,7 @@ package environment
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/jamesroutley/mal/impls/go/src/types"
 )
@@ -16,6 +17,21 @@ func NewEnv() *Env {
 		Outer: nil,
 		Data:  map[string]types.MalType{},
 	}
+}
+
+func NewChildEnv(parent *Env, binds []*types.MalSymbol, exprs []types.MalType) *Env {
+	env := &Env{
+		Outer: parent,
+		Data:  map[string]types.MalType{},
+	}
+	if len(binds) != len(exprs) {
+		// TODO: return this?
+		log.Fatal("can't create env - num binds != num exprs")
+	}
+	for i := range binds {
+		env.Set(binds[i].Value, exprs[i])
+	}
+	return env
 }
 
 func (e *Env) Set(key string, value types.MalType) {

@@ -137,7 +137,14 @@ func debugType(m types.MalType, indent int) string {
 	case *types.MalSymbol:
 		return fmt.Sprintf("symbol:`%s` ", tok.Value)
 	case *types.MalFunction:
-		return fmt.Sprintf("function")
+		return "#<function>"
+	case *types.MalBoolean:
+		if tok.Value {
+			return "boolean:true"
+		}
+		return "boolean:false"
+	case *types.MalNil:
+		return "nil"
 	default:
 		panic("debug print not implemented for this type")
 	}

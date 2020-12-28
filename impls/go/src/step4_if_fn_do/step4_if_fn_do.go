@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/jamesroutley/mal/impls/go/src/builtin"
+	"github.com/jamesroutley/mal/impls/go/src/core"
 	"github.com/jamesroutley/mal/impls/go/src/environment"
 	"github.com/jamesroutley/mal/impls/go/src/printer"
 	"github.com/jamesroutley/mal/impls/go/src/reader"
@@ -16,17 +16,19 @@ import (
 
 func main() {
 	env := environment.NewEnv()
-	env.Set("+", builtin.Add)
-	env.Set("-", builtin.Subtract)
-	env.Set("*", builtin.Multiply)
-	env.Set("/", builtin.Divide)
+	for _, item := range core.Namespace {
+		env.Set(item.Symbol.Value, item.Func)
+	}
 
-	// code := "(def! (a 1 b (+ a 5)) (+ b 4))"
+	// code := "((fn* (a) a) true)"
 	// ast, err := Read(code)
 	// if err != nil {
 	// 	log.Fatal(err)
 	// }
 	// reader.DebugType(ast)
+	// fmt.Println(Eval(ast, env))
+
+	// return
 
 	for {
 		fmt.Printf("user> ")
@@ -152,7 +154,7 @@ func isSpecialForm(ast types.MalType) (operator *types.MalSymbol, args []types.M
 	}
 
 	switch operator.Value {
-	case "def!", "let*":
+	case "def!", "let*", "if", "do", "fn*":
 		return operator, items[1:], true
 	}
 
@@ -163,6 +165,14 @@ func evalSpecialForm(
 	operator *types.MalSymbol, args []types.MalType, env *environment.Env,
 ) (types.MalType, error) {
 	switch operator.Value {
+
+	// Assigns a value to a symbol in the current environment
+	// e.g:
+	//
+	// > (def a 10)
+	// 10
+	// > a
+	// 10
 	case "def!":
 		if len(args) != 2 {
 			return nil, fmt.Errorf("def! takes 2 args")
@@ -178,6 +188,12 @@ func evalSpecialForm(
 		env.Set(key.Value, value)
 		return value, nil
 
+	// Creates a new environment with certain variables set, then evaluates a
+	// statement in that environment.
+	// e.g:
+	//
+	// (let* (a 1 b (+ a 1)) b)
+	// 2 ; a == b, b == a+1 == 2
 	case "let*":
 		if len(args) != 2 {
 			return nil, fmt.Errorf("let* takes 2 args")
@@ -206,7 +222,82 @@ func evalSpecialForm(
 		// Finally, evaluate the last arg, in the context of the newly
 		// created environment
 		return Eval(args[1], childEnv)
+
+	// Evaluates the elements in the arg list and returns the final result.
+	case "do":
+		var result types.MalType
+		for _, arg := range args {
+			var err error
+			result, err = Eval(arg, env)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return result, nil
+
+	// Evaluate first param. If not `nil` or `false`, return the evaluated
+	// second param. If it is, return the evaluated third param, or `nil` if
+	// none is supplied
+	case "if":
+		if numArgs := len(args); numArgs != 2 && numArgs != 3 {
+			return nil, fmt.Errorf("if statements must have two or three arguments, got %d", numArgs)
+		}
+		condition, err := Eval(args[0], env)
+		if err != nil {
+			return nil, err
+		}
+		if IsTruthy(condition) {
+			return Eval(args[1], env)
+		}
+
+		if len(args) == 3 {
+			return Eval(args[2], env)
+		}
+
+		return &types.MalNil{}, nil
+
+	case "fn*":
+		if len(args) != 2 {
+			return nil, fmt.Errorf("fn* statements must have two arguments, got %d", len(args))
+		}
+		arguments, ok := args[0].(*types.MalList)
+		if !ok {
+			return nil, fmt.Errorf("fn* statements must have a list as the first arg")
+		}
+		binds := make([]*types.MalSymbol, len(arguments.Items))
+		for i, a := range arguments.Items {
+			bind, ok := a.(*types.MalSymbol)
+			if !ok {
+				// TODO: improve this
+				return nil, fmt.Errorf("fn* statements must have a list of symbols as the first arg")
+			}
+			binds[i] = bind
+		}
+
+		return &types.MalFunction{
+			Func: func(exprs ...types.MalType) (types.MalType, error) {
+				childEnv := environment.NewChildEnv(
+					env, binds, exprs,
+				)
+				return Eval(args[1], childEnv)
+			},
+		}, nil
 	}
 
+	// XXX: if you add a case here, you also need to add it to `isSpecialForm`
+
 	return nil, fmt.Errorf("unexpected special form: %s", operator.Value)
+}
+
+// IsTruthy returns a type's truthiness. Currently: it's falsy if the type is
+// `nil` or the boolean 'false'. All other values are truthy.
+func IsTruthy(t types.MalType) bool {
+	switch token := t.(type) {
+	case *types.MalNil:
+		return false
+	case *types.MalBoolean:
+		return token.Value
+	}
+	return true
+
 }

@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/jamesroutley/mal/impls/go/src/builtin"
+	"github.com/jamesroutley/mal/impls/go/src/core"
 	"github.com/jamesroutley/mal/impls/go/src/environment"
 	"github.com/jamesroutley/mal/impls/go/src/printer"
 	"github.com/jamesroutley/mal/impls/go/src/reader"
@@ -16,10 +16,9 @@ import (
 
 func main() {
 	env := environment.NewEnv()
-	env.Set("+", builtin.Add)
-	env.Set("-", builtin.Subtract)
-	env.Set("*", builtin.Multiply)
-	env.Set("/", builtin.Divide)
+	for _, item := range core.Namespace {
+		env.Set(item.Symbol.Value, item.Func)
+	}
 
 	// code := "(def! (a 1 b (+ a 5)) (+ b 4))"
 	// ast, err := Read(code)

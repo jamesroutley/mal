@@ -37,3 +37,4 @@ all:
 	go build -o step1_read_print src/step1_read_print/*.go
 	go build src/step2_eval/*.go
 	go build src/step3_env/*.go
+	go build src/step4_if_fn_do/*.go

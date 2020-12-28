@@ -7,18 +7,17 @@ import (
 	"os"
 	"strings"
 
-	"github.com/jamesroutley/mal/impls/go/src/builtin"
+	"github.com/jamesroutley/mal/impls/go/src/core"
+	"github.com/jamesroutley/mal/impls/go/src/environment"
 	"github.com/jamesroutley/mal/impls/go/src/printer"
 	"github.com/jamesroutley/mal/impls/go/src/reader"
 	"github.com/jamesroutley/mal/impls/go/src/types"
 )
 
 func main() {
-	env := types.Environment{
-		"+": builtin.Add,
-		"-": builtin.Subtract,
-		"*": builtin.Multiply,
-		"/": builtin.Divide,
+	env := environment.NewEnv()
+	for _, item := range core.Namespace {
+		env.Set(item.Symbol.Value, item.Func)
 	}
 
 	// fmt.Println(env)
@@ -46,7 +45,7 @@ func Read(s string) (types.MalType, error) {
 	return reader.ReadStr(s)
 }
 
-func Eval(ast types.MalType, env types.Environment) (types.MalType, error) {
+func Eval(ast types.MalType, env *environment.Env) (types.MalType, error) {
 	switch tok := ast.(type) {
 	case *types.MalList:
 		if len(tok.Items) == 0 {
@@ -81,7 +80,7 @@ func Print(s types.MalType) string {
 	return printer.PrStr(s)
 }
 
-func Rep(s string, env types.Environment) (string, error) {
+func Rep(s string, env *environment.Env) (string, error) {
 	t, err := Read(s)
 	if err != nil {
 		return "", err
@@ -94,12 +93,12 @@ func Rep(s string, env types.Environment) (string, error) {
 	return s, nil
 }
 
-func evalAST(ast types.MalType, env types.Environment) (types.MalType, error) {
+func evalAST(ast types.MalType, env *environment.Env) (types.MalType, error) {
 	switch tok := ast.(type) {
 	case *types.MalSymbol:
-		value, ok := env[tok.Value]
-		if !ok {
-			return nil, fmt.Errorf("Symbol %s not found", tok.Value)
+		value, err := env.Get(tok.Value)
+		if err != nil {
+			return nil, err
 		}
 		return value, nil
 	case *types.MalList:

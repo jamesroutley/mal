@@ -43,7 +43,7 @@ type MalFunction struct {
 }
 
 func (f *MalFunction) String() string {
-	return "function"
+	return "#<function>"
 }
 
 type MalBoolean struct {
