@@ -40,3 +40,5 @@ all:
 	go build src/step4_if_fn_do/*.go
 	go build src/step5_tco/step5_tco.go
 	go build src/step6_file/step6_file.go
+	go build src/step7_quote/step7_quote.go
+	go build src/step8_macros/step8_macros.go

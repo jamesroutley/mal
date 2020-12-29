@@ -38,6 +38,8 @@ func init() {
 	register(">=", gte)
 	register("read-string", readString)
 	register("slurp", slurp)
+	register("cons", cons)
+	register("concat", concat)
 }
 
 func ValidateNArgs(n int, args []types.MalType) error {

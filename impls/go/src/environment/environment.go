@@ -38,6 +38,7 @@ func (e *Env) Set(key string, value types.MalType) {
 	e.Data[key] = value
 }
 
+// TODO: would be nice to switch this to return `comma ok`, rather than an error
 func (e *Env) Find(key string) (types.EnvType, error) {
 	if e == nil {
 		return nil, fmt.Errorf("`%s` is undefined", key)

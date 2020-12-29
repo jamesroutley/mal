@@ -92,6 +92,14 @@ func equalsInternal(aa types.MalType, bb types.MalType) bool {
 		b := bb.(*types.MalBoolean)
 		return a.Value == b.Value
 
+	case *types.MalSymbol:
+		b := bb.(*types.MalSymbol)
+		return a.Value == b.Value
+
+	case *types.MalString:
+		b := bb.(*types.MalString)
+		return a.Value == b.Value
+
 	case *types.MalNil:
 		// Nils don't have values, so they're always equal
 		return true
@@ -184,6 +192,38 @@ func slurp(args ...types.MalType) (types.MalType, error) {
 	}, nil
 }
 
-// func list(args ...types.MalType) (types.MalType, error) {
+// cons prepends arg1 onto the list at arg2
+// >(cons 1 (quote (2 3)))
+// (1 2 3)
+func cons(args ...types.MalType) (types.MalType, error) {
+	list, ok := args[1].(*types.MalList)
+	if !ok {
+		return nil, fmt.Errorf("cons takes a list as its second argument")
+	}
+	items := append([]types.MalType{args[0]}, list.Items...)
+	return &types.MalList{
+		Items: items,
+	}, nil
+}
 
+// concat takes a number of lists and concatenates them together
+// > (concat (list 1 2) (list 3 4))
+// (1 2 3 4)
+func concat(args ...types.MalType) (types.MalType, error) {
+	var allItems []types.MalType
+
+	for _, arg := range args {
+		list, ok := arg.(*types.MalList)
+		if !ok {
+			return nil, fmt.Errorf("concat takes lists as arguments")
+		}
+		allItems = append(allItems, list.Items...)
+	}
+
+	return &types.MalList{
+		Items: allItems,
+	}, nil
+}
+
+// func list(args ...types.MalType) (types.MalType, error) {
 // }

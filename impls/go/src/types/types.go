@@ -50,6 +50,7 @@ type MalFunction struct {
 	AST               MalType
 	Params            []*MalSymbol
 	Env               EnvType
+	IsMacro           bool
 }
 
 func (f *MalFunction) String() string {
