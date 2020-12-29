@@ -2,10 +2,12 @@ package core
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"reflect"
 
 	"github.com/jamesroutley/mal/impls/go/src/printer"
+	"github.com/jamesroutley/mal/impls/go/src/reader"
 	"github.com/jamesroutley/mal/impls/go/src/types"
 )
 
@@ -154,6 +156,31 @@ func gte(args ...types.MalType) (types.MalType, error) {
 
 	return &types.MalBoolean{
 		Value: numbers[0].Value >= numbers[1].Value,
+	}, nil
+}
+
+func readString(args ...types.MalType) (types.MalType, error) {
+	arg, ok := args[0].(*types.MalString)
+	if !ok {
+		return nil, fmt.Errorf("read-string takes a string")
+	}
+
+	return reader.ReadStr(arg.Value)
+}
+
+func slurp(args ...types.MalType) (types.MalType, error) {
+	filename, ok := args[0].(*types.MalString)
+	if !ok {
+		return nil, fmt.Errorf("read-string takes a string")
+	}
+
+	data, err := ioutil.ReadFile(filename.Value)
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.MalString{
+		Value: string(data),
 	}, nil
 }
 

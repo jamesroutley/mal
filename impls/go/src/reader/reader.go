@@ -115,6 +115,16 @@ func ReadAtom(reader *Reader) (types.MalType, error) {
 		return &types.MalNil{}, nil
 	}
 
+	if strings.HasPrefix(token, `"`) {
+		if !strings.HasSuffix(token, `"`) {
+			return nil, fmt.Errorf("unclosed string")
+		}
+
+		return &types.MalString{
+			Value: strings.Trim(token, `"`),
+		}, nil
+	}
+
 	return &types.MalSymbol{
 		Value: token,
 	}, nil
@@ -146,7 +156,7 @@ func debugType(m types.MalType, indent int) string {
 	case *types.MalNil:
 		return "nil"
 	default:
-		panic("debug print not implemented for this type")
+		return tok.String()
 	}
 }
 

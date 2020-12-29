@@ -72,3 +72,11 @@ type MalNil struct{}
 func (n *MalNil) String() string {
 	return "nil"
 }
+
+type MalString struct {
+	Value string
+}
+
+func (s *MalString) String() string {
+	return fmt.Sprintf(`"%s"`, s.Value)
+}
